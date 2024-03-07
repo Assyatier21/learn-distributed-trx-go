@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gosom/gosql2pc"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 type InsertPondRequest struct {
@@ -37,18 +38,25 @@ func main() {
 	defer neptuneDB.Close()
 
 	e := echo.New()
+	e.Use(middleware.Logger())
 
 	e.POST("/pond", func(c echo.Context) error {
 		var payload InsertPondRequest
+
+		// Handler Level
 		if err := c.Bind(&payload); err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]interface{}{"success": false, "message": "bad request"})
 		}
 
-		payload.UUID = uuid.NewString()
-		if payload.CPUUID == "" {
-			payload.CPUUID = payload.UUID
+		// Service Level
+		if payload.CPUUID != "" {
+			payload.UUID = payload.CPUUID
+		} else {
+			payload.UUID = uuid.NewString()
+			payload.CPUUID = uuid.NewString()
 		}
 
+		// Repository Level
 		cultivationParticipant := gosql2pc.NewParticipant(cultivationDB, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, "INSERT INTO ponds (uuid, name, lead_id) VALUES ($1, $2, $3)", payload.UUID, payload.Name, payload.LeadID)
 			return err
@@ -60,6 +68,7 @@ func main() {
 			return err
 		})
 
+		// Service Level
 		params := gosql2pc.Params{
 			LogFn: func(format string, args ...any) {
 				fmt.Println(format, args)
@@ -70,12 +79,6 @@ func main() {
 		if err := gosql2pc.Do(context.Background(), params); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]interface{}{"success": false, "message": err.Error()})
 		}
-
-		// participants := []*Participant{cultivationParticipant, neptuneParticipant}
-
-		// if err := coordinator.ExecuteDistributedTransaction(ctx, payload, participants); err != nil {
-		// 	return c.JSON(http.StatusInternalServerError, map[string]interface{}{"success": false, "message": err.Error()})
-		// }
 
 		return c.JSON(http.StatusOK, map[string]interface{}{"success": true, "message": "success"})
 	})
