@@ -49,22 +49,20 @@ func main() {
 		}
 
 		// Service Level
-		if payload.CPUUID != "" {
-			payload.UUID = payload.CPUUID
-		} else {
-			payload.UUID = uuid.NewString()
+		payload.UUID = uuid.NewString()
+		if payload.CPUUID == "" {
 			payload.CPUUID = uuid.NewString()
 		}
 
 		// Repository Level
-		cultivationParticipant := gosql2pc.NewParticipant(cultivationDB, func(ctx context.Context, tx *sql.Tx) error {
-			_, err := tx.ExecContext(ctx, "INSERT INTO ponds (uuid, name, lead_id) VALUES ($1, $2, $3)", payload.UUID, payload.Name, payload.LeadID)
-			return err
-		})
-
 		neptuneParticipant := gosql2pc.NewParticipant(neptuneDB, func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, "INSERT INTO ponds (uuid, name, cp_uuid, feeder_barcode) VALUES ($1, $2, $3, $4)",
 				payload.UUID, payload.Name, payload.CPUUID, payload.FeederBarcode)
+			return err
+		})
+
+		cultivationParticipant := gosql2pc.NewParticipant(cultivationDB, func(ctx context.Context, tx *sql.Tx) error {
+			_, err := tx.ExecContext(ctx, "INSERT INTO ponds (uuid, name, lead_id) VALUES ($1, $2, $3)", payload.CPUUID, payload.Name, payload.LeadID)
 			return err
 		})
 
@@ -73,7 +71,7 @@ func main() {
 			LogFn: func(format string, args ...any) {
 				fmt.Println(format, args)
 			},
-			Participants: []gosql2pc.Participant{cultivationParticipant, neptuneParticipant},
+			Participants: []gosql2pc.Participant{neptuneParticipant, cultivationParticipant},
 		}
 
 		if err := gosql2pc.Do(context.Background(), params); err != nil {
